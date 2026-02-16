@@ -33,13 +33,13 @@ footer button{margin-right:6px}
 <body>
 
 <header>
-  <h1>CRM – Suivi des appels</h1>
+  <h1>CRM â€“ Suivi des appels</h1>
 </header>
 
 <div class="wrap">
 
 <div class="card">
-  <input id="search" placeholder="Recherche (nom, téléphone, statut)">
+  <input id="search" placeholder="Recherche (nom, tÃ©lÃ©phone, statut)">
 </div>
 
 <div id="list"></div>
@@ -51,10 +51,10 @@ footer button{margin-right:6px}
   <label>Nom</label>
   <input id="f_nom">
 
-  <label>Prénom</label>
+  <label>PrÃ©nom</label>
   <input id="f_prenom">
 
-  <label>Téléphone mobile</label>
+  <label>TÃ©lÃ©phone mobile</label>
   <input id="f_mobile">
 
   <label>Adresse</label>
@@ -63,17 +63,17 @@ footer button{margin-right:6px}
   <label>Statut</label>
   <select id="f_statut">
     <option>Nouveau</option>
-    <option>À rappeler</option>
+    <option>Ã€ rappeler</option>
     <option>RDV OK</option>
-    <option>Pas intéressé</option>
-    <option>À ne plus appeler</option>
+    <option>Pas intÃ©ressÃ©</option>
+    <option>Ã€ ne plus appeler</option>
     <option>Hors cible</option>
   </select>
 
   <label>Commentaire</label>
   <textarea id="f_commentaire"></textarea>
 
-  <label>Modifié par</label>
+  <label>ModifiÃ© par</label>
   <input id="f_lastBy">
 
   <br><br>
@@ -83,7 +83,7 @@ footer button{margin-right:6px}
 
 <!-- IMPORT MAPPING -->
 <div id="importCard" class="card hidden">
-  <h3>Import Excel – Mapping des colonnes</h3>
+  <h3>Import Excel â€“ Mapping des colonnes</h3>
   <div id="mapping"></div>
   <br>
   <button onclick="confirmImport()">Importer</button>
@@ -152,7 +152,7 @@ function render(){
       <b>${c.nom||""} ${c.prenom||""}</b><br>
       ${c.mobile||""}<br>
       <span class="badge ${badge(c.statut)}">${c.statut||"Nouveau"}</span><br>
-      <small>Dernière modif : ${c.lastBy||"-"}</small>
+      <small>DerniÃ¨re modif : ${c.lastBy||"-"}</small>
       <div class="actions">
         <button onclick="edit('${c.id}')">Modifier</button>
         <button onclick="removeContact('${c.id}')">Supprimer</button>
@@ -164,9 +164,9 @@ function render(){
 
 function badge(st){
   if(st==="RDV OK") return "ok";
-  if(st==="À rappeler") return "call";
-  if(st==="Pas intéressé") return "no";
-  if(st==="À ne plus appeler") return "stop";
+  if(st==="Ã€ rappeler") return "call";
+  if(st==="Pas intÃ©ressÃ©") return "no";
+  if(st==="Ã€ ne plus appeler") return "stop";
   return "new";
 }
 
