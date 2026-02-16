@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRM Appels</title>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<style>
+body{font-family:Arial;margin:0;background:#f5f7fb}
+header{background:#fff;padding:12px;border-bottom:1px solid #ddd}
+h1{margin:0;font-size:16px}
+.wrap{padding:12px 12px 120px;max-width:900px;margin:auto}
+.card{background:#fff;border:1px solid #ddd;border-radius:10px;padding:12px;margin-bottom:12px}
+.row{border:1px solid #ddd;border-radius:10px;padding:10px;margin-bottom:8px}
+label{font-size:12px;color:#555;display:block;margin-top:8px}
+input,select,textarea{width:100%;padding:8px;font-size:14px}
+textarea{min-height:60px}
+.badge{font-size:12px;padding:3px 8px;border-radius:20px;display:inline-block}
+.new{background:#e0f2fe}
+.call{background:#ffedd5}
+.ok{background:#dcfce7}
+.no{background:#fee2e2}
+.stop{background:#000;color:#fff}
+.actions button{margin:6px 6px 0 0}
+footer{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #ddd;padding:10px}
+footer button{margin-right:6px}
+.hidden{display:none}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>CRM – Suivi des appels</h1>
+</header>
+
+<div class="wrap">
+
+<div class="card">
+  <input id="search" placeholder="Recherche (nom, téléphone, statut)">
+</div>
+
+<div id="list"></div>
+
+<!-- FORMULAIRE -->
+<div id="formCard" class="card hidden">
+  <h3 id="formTitle">Nouveau contact</h3>
+
+  <label>Nom</label>
+  <input id="f_nom">
+
+  <label>Prénom</label>
+  <input id="f_prenom">
+
+  <label>Téléphone mobile</label>
+  <input id="f_mobile">
+
+  <label>Adresse</label>
+  <input id="f_adresse">
+
+  <label>Statut</label>
+  <select id="f_statut">
+    <option>Nouveau</option>
+    <option>À rappeler</option>
+    <option>RDV OK</option>
+    <option>Pas intéressé</option>
+    <option>À ne plus appeler</option>
+    <option>Hors cible</option>
+  </select>
+
+  <label>Commentaire</label>
+  <textarea id="f_commentaire"></textarea>
+
+  <label>Modifié par</label>
+  <input id="f_lastBy">
+
+  <br><br>
+  <button onclick="saveContact()">Enregistrer</button>
+  <button onclick="closeForm()">Annuler</button>
+</div>
+
+<!-- IMPORT MAPPING -->
+<div id="importCard" class="card hidden">
+  <h3>Import Excel – Mapping des colonnes</h3>
+  <div id="mapping"></div>
+  <br>
+  <button onclick="confirmImport()">Importer</button>
+  <button onclick="closeImport()">Annuler</button>
+</div>
+
+</div>
+
+<footer>
+  <button onclick="openForm()">Nouveau</button>
+  <button onclick="openImport()">Importer</button>
+  <button onclick="exportExcel()">Exporter</button>
+  <button onclick="history.back()"> Retour</button>
+</footer>
+
+<input type="file" id="file" accept=".xlsx,.xls" hidden>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
+import {
+  getFirestore, collection, addDoc, onSnapshot,
+  updateDoc, deleteDoc, doc, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
+
+/*  Firebase */
+const app = initializeApp({
+  apiKey: "AIzaSyA-G8P5NokxI6ZaIOMroQrH4x8mp_Q2dgg",
+  authDomain: "axokit-crm-ecoles-e56ab.firebaseapp.com",
+  projectId: "axokit-crm-ecoles-e56ab"
+});
+const db = getFirestore(app);
+
+const list = document.getElementById("list");
+const search = document.getElementById("search");
+const file = document.getElementById("file");
+const formCard = document.getElementById("formCard");
+const importCard = document.getElementById("importCard");
+const mappingDiv = document.getElementById("mapping");
+
+let data = [];
+let editingId = null;
+let importRows = [];
+let headers = [];
+
+/*  Live */
+onSnapshot(collection(db,"contacts"), snap=>{
+  data=[];
+  snap.forEach(d=>data.push({id:d.id,...d.data()}));
+  render();
+});
+
+search.oninput = render;
+
+function render(){
+  list.innerHTML="";
+  const q=(search.value||"").toLowerCase();
+  data.filter(c=>
+    (c.nom||"").toLowerCase().includes(q)||
+    (c.prenom||"").toLowerCase().includes(q)||
+    (c.mobile||"").includes(q)||
+    (c.statut||"").toLowerCase().includes(q)
+  ).forEach(c=>{
+    const div=document.createElement("div");
+    div.className="row";
+    div.innerHTML=`
+      <b>${c.nom||""} ${c.prenom||""}</b><br>
+      ${c.mobile||""}<br>
+      <span class="badge ${badge(c.statut)}">${c.statut||"Nouveau"}</span><br>
+      <small>Dernière modif : ${c.lastBy||"-"}</small>
+      <div class="actions">
+        <button onclick="edit('${c.id}')">Modifier</button>
+        <button onclick="removeContact('${c.id}')">Supprimer</button>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function badge(st){
+  if(st==="RDV OK") return "ok";
+  if(st==="À rappeler") return "call";
+  if(st==="Pas intéressé") return "no";
+  if(st==="À ne plus appeler") return "stop";
+  return "new";
+}
+
+/* FORM */
+window.openForm=()=>{
+  editingId=null;
+  formCard.classList.remove("hidden");
+};
+window.closeForm=()=>formCard.classList.add("hidden");
+
+window.edit=id=>{
+  const c=data.find(x=>x.id===id);
+  editingId=id;
+  f_nom.value=c.nom||"";
+  f_prenom.value=c.prenom||"";
+  f_mobile.value=c.mobile||"";
+  f_adresse.value=c.adresse||"";
+  f_statut.value=c.statut||"Nouveau";
+  f_commentaire.value=c.commentaire||"";
+  f_lastBy.value=c.lastBy||"";
+  formCard.classList.remove("hidden");
+};
+
+window.saveContact=async()=>{
+  const payload={
+    nom:f_nom.value,
+    prenom:f_prenom.value,
+    mobile:f_mobile.value,
+    adresse:f_adresse.value,
+    statut:f_statut.value,
+    commentaire:f_commentaire.value,
+    lastBy:f_lastBy.value,
+    updatedAt:serverTimestamp()
+  };
+  if(editingId){
+    await updateDoc(doc(db,"contacts",editingId),payload);
+  }else{
+    payload.createdAt=serverTimestamp();
+    await addDoc(collection(db,"contacts"),payload);
+  }
+  closeForm();
+};
+
+window.removeContact=async id=>{
+  if(confirm("Supprimer ?")){
+    await deleteDoc(doc(db,"contacts",id));
+  }
+};
+
+/* EXPORT */
+window.exportExcel=()=>{
+  const ws=XLSX.utils.json_to_sheet(data);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"CRM");
+  XLSX.writeFile(wb,"crm_contacts.xlsx");
+};
+
+/* IMPORT AVEC MAPPING */
+window.openImport=()=>file.click();
+
+file.onchange=async()=>{
+  const buf=await file.files[0].arrayBuffer();
+  const wb=XLSX.read(buf,{type:"array"});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  importRows=XLSX.utils.sheet_to_json(ws,{defval:""});
+  headers=Object.keys(importRows[0]||{});
+  buildMapping();
+};
+
+function buildMapping(){
+  mappingDiv.innerHTML="";
+  const fields=["nom","prenom","mobile","adresse","statut","commentaire"];
+  fields.forEach(f=>{
+    const sel=document.createElement("select");
+    sel.dataset.field=f;
+    sel.innerHTML=`<option value="">-- ${f} --</option>`+
+      headers.map(h=>`<option value="${h}">${h}</option>`).join("");
+    mappingDiv.appendChild(sel);
+  });
+  importCard.classList.remove("hidden");
+}
+
+window.closeImport=()=>importCard.classList.add("hidden");
+
+window.confirmImport=async()=>{
+  const selects=[...mappingDiv.querySelectorAll("select")];
+  for(const r of importRows){
+    const obj={};
+    selects.forEach(s=>{
+      if(s.value) obj[s.dataset.field]=r[s.value];
+    });
+    obj.statut=obj.statut||"Nouveau";
+    obj.lastBy="Import";
+    obj.createdAt=serverTimestamp();
+    obj.updatedAt=serverTimestamp();
+    await addDoc(collection(db,"contacts"),obj);
+  }
+  closeImport();
+};
+</script>
+
+</body>
+</html>

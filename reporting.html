@@ -1,0 +1,1037 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Reporting Vicidial — CRM Complet (Stable Android)</title>
+
+<style>
+  :root{
+    --bg:#f4f7ff; --card:#fff; --text:#0b1220; --muted:rgba(11,18,32,.62);
+    --stroke:#dbe1f1; --shadow:0 10px 30px rgba(0,0,0,.10);
+    --blue:#0b57d0; --red:#e53935; --soft:#eef3ff; --green:#16a34a;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Arial,system-ui;background:var(--bg);color:var(--text)}
+  header{position:sticky;top:0;z-index:60;background:#fff;border-bottom:1px solid var(--stroke)}
+  .top{max-width:1900px;margin:auto;padding:10px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between}
+  h1{margin:0;font-size:18px;color:var(--blue)}
+  .wrap{max-width:1900px;margin:auto;padding:12px}
+  .card{background:var(--card);border-radius:var(--radius);padding:12px;margin-bottom:12px;box-shadow:var(--shadow)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+  .big{font-size:22px;font-weight:900;color:var(--blue)}
+  .small{font-size:12px;color:#666}
+  .badge{display:inline-block;padding:4px 10px;border-radius:999px;background:var(--soft);color:var(--blue);font-weight:900;font-size:12px}
+  button{padding:8px 12px;border-radius:10px;border:none;font-weight:900;cursor:pointer}
+  .primary{background:var(--blue);color:#fff}
+  .danger{background:var(--red);color:#fff}
+  .soft{background:var(--soft);color:var(--blue)}
+  .ok{background:var(--green);color:#fff}
+  input,select{padding:8px;border-radius:10px;border:1px solid #ccd4ea;width:100%}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{border:1px solid #ccd4ea;padding:6px;white-space:nowrap;vertical-align:top}
+  th{background:#eef3ff}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed #cbd5e1}
+  .row:last-child{border-bottom:none}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+  .errbox{display:none;margin-top:8px;background:#fff2f2;border:1px solid #ffd2d2;color:#7a0b0b;padding:10px;border-radius:12px}
+  .stickybar{position:sticky;bottom:0;z-index:55;background:rgba(244,247,255,.95);backdrop-filter:blur(6px);border-top:1px solid var(--stroke);padding:10px}
+  .stickybar .actions{justify-content:space-between;align-items:center}
+  .modalBack{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:100}
+  .modal{width:min(980px,94vw);background:#fff;border-radius:16px;box-shadow:0 20px 70px rgba(0,0,0,.25);padding:14px}
+  .modal h3{margin:0 0 10px 0}
+  .modal .grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  .hint{color:#0b57d0;font-weight:900}
+  a.link{color:#0b57d0;text-decoration:underline}
+</style>
+
+<!-- Firebase COMPAT (stable Android) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<!-- Excel -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+
+<body>
+<header>
+  <div class="top">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <h1>📊 Reporting Vicidial — CRM</h1>
+      <span class="badge">RDV = SALE / SALES</span>
+      <span id="filterBadge" class="badge" style="display:none"></span>
+    </div>
+    <div class="actions">
+      <button class="soft" onclick="exportExcel('all')">📥 Excel (tout)</button>
+      <button class="soft" onclick="exportExcel('filtered')">📥 Excel (filtré)</button>
+      <button class="danger" onclick="deleteAll()">🧨 Tout supprimer (base)</button>
+      <button class="soft" onclick="location.href='index.html'">🏠 Accueil</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- STATS -->
+  <div class="card">
+    <div class="grid">
+      <div><div class="small">Total appels</div><div id="sCalls" class="big">0</div></div>
+      <div><div class="small">Total RDV (SALE/SALES)</div><div id="sSales" class="big">0</div></div>
+      <div><div class="small">Agents distincts</div><div id="sAgents" class="big">0</div></div>
+      <div><div class="small">Durée totale (sec)</div><div id="sDur" class="big">0</div></div>
+    </div>
+    <div id="err" class="errbox"></div>
+  </div>
+
+  <!-- FILTRES -->
+  <div class="card">
+    <h3 style="margin:0 0 8px 0">Filtres</h3>
+    <div class="grid">
+      <div>
+        <div class="small">Date de (appel)</div>
+        <input type="date" id="dFrom" />
+      </div>
+      <div>
+        <div class="small">Date à (appel)</div>
+        <input type="date" id="dTo" />
+      </div>
+      <div>
+        <div class="small">User (agent)</div>
+        <select id="fUser"><option value="">Tous</option></select>
+      </div>
+      <div>
+        <div class="small">Statut</div>
+        <select id="fStatus"><option value="">Tous</option></select>
+      </div>
+      <div>
+        <div class="small">Recherche (mobile / nom / prénom / comments / code / ville)</div>
+        <input id="q" placeholder="ex: 034..., ANDRIA..., Antsirabe, code..." />
+      </div>
+      <div>
+        <div class="small">Actions</div>
+        <div class="actions" style="justify-content:flex-start">
+          <button class="primary" onclick="applyFilters()">Appliquer</button>
+          <button class="soft" onclick="resetFilters()">Réinitialiser</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- IMPORT -->
+  <div class="card">
+    <h3 style="margin:0 0 8px 0">Import Vicidial</h3>
+    <div class="grid" style="align-items:end">
+      <div>
+        <div class="small">Fichier TXT/CSV (séparateur ; , ou tab)</div>
+        <input type="file" id="file" accept=".txt,.csv,.tsv" />
+        <div class="small">
+          Colonnes possibles : <span class="mono">call_date, user, status, phone_number, length_in_sec, recording_location, comments</span>
+          + <span class="mono">first_name, last_name, address, city, postal_code, mobile, code_given, rdv_datetime</span>
+        </div>
+      </div>
+      <div>
+        <button class="primary" onclick="importFile()">Valider l’import</button>
+        <div id="msg" class="small"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORIQUE IMPORT -->
+  <div class="card">
+    <h3 style="margin:0 0 8px 0">Historique des imports</h3>
+    <div id="imports" class="small">Chargement…</div>
+    <div class="small" style="margin-top:8px">
+      ✅ “Supprimer base” supprime : (1) l’entrée import (2) les lignes qui n’appartiennent qu’à cet import.  
+      Si une ligne a été importée par plusieurs fichiers, on retire seulement cet import de sa liste.
+    </div>
+  </div>
+
+  <!-- PIVOT DÉTAILLÉ -->
+  <div class="card">
+    <h3 style="margin:0 0 8px 0">Pivot détaillé & statistiques (suivant filtre)</h3>
+    <div class="grid">
+      <div>
+        <div class="small">Par jour</div>
+        <table>
+          <thead><tr><th>Date</th><th>Appels</th><th>RDV</th><th>Durée</th><th>Taux</th></tr></thead>
+          <tbody id="pDay"></tbody>
+        </table>
+      </div>
+      <div>
+        <div class="small">Par agent</div>
+        <table>
+          <thead><tr><th>Agent</th><th>Appels</th><th>RDV</th><th>Durée</th><th>Taux</th><th>Durée moy.</th></tr></thead>
+          <tbody id="pAgent"></tbody>
+        </table>
+      </div>
+      <div>
+        <div class="small">Par statut</div>
+        <table>
+          <thead><tr><th>Status</th><th>Total</th></tr></thead>
+          <tbody id="pStatus"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="card">
+    <div class="actions" style="justify-content:space-between;align-items:center">
+      <div>
+        <b>Détails</b>
+        <div class="small">Affichage par lots (anti-crash). Utilisez “Afficher plus”.</div>
+      </div>
+      <div class="actions">
+        <span class="badge">Affichés : <span id="shown">0</span> / <span id="totalFiltered">0</span></span>
+        <button class="soft" onclick="exportExcel('filtered')">Excel filtré</button>
+        <button class="soft" onclick="exportExcel('all')">Excel tout</button>
+        <button class="soft" onclick="exportCSV('filtered')">CSV filtré</button>
+      </div>
+    </div>
+
+    <div style="overflow:auto;margin-top:10px">
+      <table>
+        <thead>
+          <tr>
+            <th>Date appel</th>
+            <th>User</th>
+            <th>Statut</th>
+
+            <th>Mobile</th>
+            <th>Prénom</th>
+            <th>Nom</th>
+            <th>Adresse</th>
+            <th>Ville</th>
+            <th>Code postal</th>
+
+            <th>Code donné</th>
+            <th>Date RDV (manuel)</th>
+
+            <th>Durée (sec)</th>
+            <th>Recording location</th>
+            <th>Comments</th>
+
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="actions" style="margin-top:10px;justify-content:center">
+      <button class="primary" id="btnMore" onclick="showMore()">Afficher plus</button>
+    </div>
+  </div>
+</div>
+
+<div class="stickybar">
+  <div class="actions">
+    <div class="small"><span class="hint">⚠</span> Si tu as beaucoup de lignes : n’affiche pas tout d’un coup. Ici c’est volontairement paginé.</div>
+    <div class="actions">
+      <button class="soft" onclick="showTop()">⬆️ Haut</button>
+      <button class="ok" onclick="applyFilters()">✅ Recalcul</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL MODIFIER -->
+<div class="modalBack" id="modalBack">
+  <div class="modal">
+    <div class="actions" style="justify-content:space-between;align-items:center">
+      <h3>✏️ Modifier</h3>
+      <button class="soft" onclick="closeModal()">✖ Fermer</button>
+    </div>
+
+    <div class="small">ID : <span id="mId" class="mono"></span></div>
+
+    <div class="grid" style="margin-top:10px">
+      <div><div class="small">Prénom</div><input id="mFirst" /></div>
+      <div><div class="small">Nom</div><input id="mLast" /></div>
+      <div><div class="small">Mobile</div><input id="mMobile" /></div>
+
+      <div><div class="small">Adresse</div><input id="mAddress" /></div>
+      <div><div class="small">Ville</div><input id="mCity" /></div>
+      <div><div class="small">Code postal</div><input id="mPostal" /></div>
+
+      <div><div class="small">Statut</div><input id="mStatus" /></div>
+      <div><div class="small">Code donné</div><input id="mCodeGiven" /></div>
+      <div><div class="small">Date RDV (manuel)</div><input id="mRdv" type="datetime-local" /></div>
+
+      <div><div class="small">Durée d’appel (sec)</div><input id="mLen" type="number" /></div>
+      <div><div class="small">Recording location</div><input id="mRec" /></div>
+      <div style="grid-column:1/-1"><div class="small">Comments</div><input id="mCom" /></div>
+    </div>
+
+    <div class="actions" style="margin-top:12px;justify-content:flex-start">
+      <button class="primary" onclick="saveEdit()">💾 Enregistrer</button>
+      <button class="danger" onclick="deleteRowFromModal()">🗑 Supprimer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ======================
+   FIREBASE INIT (COMPAT)
+====================== */
+firebase.initializeApp({
+  apiKey:"AIzaSyA-G8P5NokxI6ZaIOMroQrH4x8mp_Q2dgg",
+  authDomain:"axokit-crm-ecoles-e56ab.firebaseapp.com",
+  projectId:"axokit-crm-ecoles-e56ab"
+});
+const db = firebase.firestore();
+const FieldValue = firebase.firestore.FieldValue;
+
+const CALLS = "vicidial_calls";
+const IMPORTS = "vicidial_imports";
+const ADMIN_PASSWORD = "admin2026";
+
+/* ======================
+   STATE
+====================== */
+let ALL = [];
+let FILTERED = [];
+let shownCount = 0;
+const PAGE_SIZE = 120;
+let editingId = null;
+
+const $ = (id)=>document.getElementById(id);
+
+function showError(msg){
+  const box = $("err");
+  box.style.display = "block";
+  box.textContent = msg;
+}
+function clearError(){
+  const box = $("err");
+  box.style.display = "none";
+  box.textContent = "";
+}
+
+/* Anti “fermeture” : capturer erreurs */
+window.onerror = function(message, source, lineno){
+  showError("Erreur JS : " + message + " (ligne " + lineno + ")");
+  return true;
+};
+window.onunhandledrejection = function(e){
+  showError("Promise rejetée : " + (e && e.reason ? (e.reason.message || e.reason) : "inconnue"));
+};
+
+/* ======================
+   HELPERS
+====================== */
+function safe(v){ return (v===undefined || v===null) ? "" : String(v); }
+function normStatus(s){ return safe(s).toUpperCase().trim(); }
+function isSale(s){ const st = normStatus(s); return st==="SALE" || st==="SALES"; }
+function dateKey(call_date){
+  const s = safe(call_date);
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : "";
+}
+function detectSep(line){
+  if(line.includes("\t")) return "\t";
+  if(line.includes(";")) return ";";
+  return ",";
+}
+function fnv1a(str){
+  let h = 0x811c9dc5;
+  for(let i=0;i<str.length;i++){
+    h ^= str.charCodeAt(i);
+    h = (h + ((h<<1) + (h<<4) + (h<<7) + (h<<8) + (h<<24))) >>> 0;
+  }
+  return ("00000000"+h.toString(16)).slice(-8);
+}
+function makeDocId(dedupeKey){
+  return fnv1a(dedupeKey) + fnv1a(dedupeKey+"|2") + fnv1a(dedupeKey+"|3"); // 24 hex
+}
+function pickObj(obj, ...keys){
+  const lower = {};
+  Object.keys(obj).forEach(k=> lower[String(k).toLowerCase().trim()] = obj[k]);
+  for(const k of keys){
+    const kk = String(k).toLowerCase().trim();
+    if(lower[kk] !== undefined) return lower[kk];
+  }
+  return "";
+}
+function csvEscape(v){
+  const s = safe(v).replace(/\r?\n/g," ");
+  if(s.includes(";") || s.includes('"')) return `"${s.replace(/"/g,'""')}"`;
+  return s;
+}
+
+/* ======================
+   LIVE DATA (limité pour stabilité)
+====================== */
+function loadLive(){
+  clearError();
+
+  db.collection(CALLS).orderBy("createdAt","desc").limit(1500).onSnapshot(snap=>{
+    ALL = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    buildFilterOptions();
+    applyFilters();
+  }, err=>{
+    showError("Firestore CALLS : " + err.message);
+  });
+
+  db.collection(IMPORTS).orderBy("createdAt","desc").limit(200).onSnapshot(snap=>{
+    if(snap.empty){
+      $("imports").innerHTML = "Aucun import";
+      return;
+    }
+    $("imports").innerHTML = snap.docs.map(d=>{
+      const it = d.data();
+      const when = it.createdAt && it.createdAt.toDate ? it.createdAt.toDate().toLocaleString() : "";
+      return `
+        <div class="row">
+          <div>
+            <b>${safe(it.fileName)}</b> <span class="small">${when}</span><br>
+            <span class="small mono">importId: ${d.id}</span>
+          </div>
+          <div class="actions">
+            <button class="soft" onclick="exportExcel('import','${d.id}')">Excel</button>
+            <button class="soft" onclick="exportCSV('import','${d.id}')">CSV</button>
+            <button class="danger" onclick="deleteImport('${d.id}')">Supprimer base</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }, err=>{
+    showError("Firestore IMPORTS : " + err.message);
+  });
+}
+loadLive();
+
+/* ======================
+   FILTER OPTIONS
+====================== */
+function uniqSorted(arr){
+  return [...new Set(arr.filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b)));
+}
+function buildFilterOptions(){
+  const users = uniqSorted(ALL.map(r=>r.user));
+  const statuses = uniqSorted(ALL.map(r=>normStatus(r.status)));
+
+  const curU = $("fUser").value;
+  const curS = $("fStatus").value;
+
+  $("fUser").innerHTML = `<option value="">Tous</option>` + users.map(u=>`<option value="${u.replaceAll('"','&quot;')}">${u}</option>`).join("");
+  $("fStatus").innerHTML = `<option value="">Tous</option>` + statuses.map(s=>`<option value="${s.replaceAll('"','&quot;')}">${s}</option>`).join("");
+
+  if(users.includes(curU)) $("fUser").value = curU;
+  if(statuses.includes(curS)) $("fStatus").value = curS;
+}
+
+/* ======================
+   FILTERS
+====================== */
+window.resetFilters = function(){
+  $("dFrom").value = "";
+  $("dTo").value = "";
+  $("fUser").value = "";
+  $("fStatus").value = "";
+  $("q").value = "";
+  applyFilters();
+};
+
+window.applyFilters = function(){
+  clearError();
+
+  const from = $("dFrom").value;
+  const to = $("dTo").value;
+  const user = $("fUser").value;
+  const status = $("fStatus").value;
+  const q = $("q").value.trim().toLowerCase();
+
+  FILTERED = ALL.filter(r=>{
+    const dk = dateKey(r.call_date);
+    if(from && dk && dk < from) return false;
+    if(to && dk && dk > to) return false;
+    if((from || to) && !dk) return false;
+
+    if(user && safe(r.user) !== user) return false;
+    if(status && normStatus(r.status) !== normStatus(status)) return false;
+
+    if(q){
+      const hay = [
+        r.mobile, r.phone_number, r.first_name, r.last_name, r.address, r.city, r.postal_code,
+        r.comments, r.user, r.status, r.recording_location, r.code_given, r.rdv_datetime
+      ].map(safe).join(" ").toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const parts=[];
+  if(from) parts.push("De "+from);
+  if(to) parts.push("À "+to);
+  if(user) parts.push("User: "+user);
+  if(status) parts.push("Statut: "+normStatus(status));
+  if(q) parts.push("Recherche: "+q);
+  if(parts.length){
+    $("filterBadge").style.display="inline-block";
+    $("filterBadge").textContent="Filtre: " + parts.join(" • ");
+  }else{
+    $("filterBadge").style.display="none";
+    $("filterBadge").textContent="";
+  }
+
+  $("tbody").innerHTML = "";
+  shownCount = 0;
+  $("totalFiltered").textContent = FILTERED.length;
+  $("shown").textContent = 0;
+  $("btnMore").disabled = false;
+  $("btnMore").textContent = "Afficher plus";
+
+  showMore();
+  renderStats();
+  renderPivot();
+};
+
+function renderStats(){
+  let sales=0, dur=0;
+  const agents = new Set();
+  FILTERED.forEach(r=>{
+    if(isSale(r.status)) sales++;
+    dur += Number(r.call_length || 0);
+    if(r.user) agents.add(r.user);
+  });
+  $("sCalls").textContent = FILTERED.length;
+  $("sSales").textContent = sales;
+  $("sAgents").textContent = agents.size;
+  $("sDur").textContent = dur;
+}
+
+/* ======================
+   TABLE (pagination)
+====================== */
+window.showMore = function(){
+  const start = shownCount;
+  const end = Math.min(shownCount + PAGE_SIZE, FILTERED.length);
+  if(start >= end){
+    $("btnMore").disabled = true;
+    $("btnMore").textContent = "Fin";
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+
+  for(let i=start; i<end; i++){
+    const r = FILTERED[i];
+    const tr = document.createElement("tr");
+
+    const mobile = safe(r.mobile || r.phone_number);
+    const rdv = safe(r.rdv_datetime);
+    const rec = safe(r.recording_location);
+
+    tr.innerHTML = `
+      <td>${safe(r.call_date)}</td>
+      <td>${safe(r.user)}</td>
+      <td>${safe(normStatus(r.status))}</td>
+
+      <td>${mobile}</td>
+      <td>${safe(r.first_name)}</td>
+      <td>${safe(r.last_name)}</td>
+      <td>${safe(r.address)}</td>
+      <td>${safe(r.city)}</td>
+      <td>${safe(r.postal_code)}</td>
+
+      <td>${safe(r.code_given)}</td>
+      <td>${rdv}</td>
+
+      <td>${safe(r.call_length)}</td>
+      <td>${rec ? `<a class="link" href="${rec}" target="_blank" rel="noopener">ouvrir</a>` : ""}</td>
+      <td>${safe(r.comments)}</td>
+
+      <td class="actions">
+        <button class="soft" onclick="openEdit('${r.id}')">✏️ Modifier</button>
+        <button class="danger" onclick="deleteRow('${r.id}')">🗑</button>
+      </td>
+    `;
+    frag.appendChild(tr);
+  }
+
+  $("tbody").appendChild(frag);
+  shownCount = end;
+  $("shown").textContent = shownCount;
+
+  if(shownCount >= FILTERED.length){
+    $("btnMore").disabled = true;
+    $("btnMore").textContent = "Fin";
+  }
+};
+
+window.showTop = function(){
+  window.scrollTo({top:0, behavior:"smooth"});
+};
+
+/* ======================
+   PIVOT DÉTAILLÉ
+====================== */
+function renderPivot(){
+  const byDay = new Map();
+  const byAgent = new Map();
+  const byStatus = new Map();
+
+  for(const r of FILTERED){
+    const day = dateKey(r.call_date) || "(date inconnue)";
+    const agent = safe(r.user) || "(sans agent)";
+    const st = normStatus(r.status) || "(sans status)";
+    const dur = Number(r.call_length || 0);
+    const sale = isSale(st);
+
+    if(!byDay.has(day)) byDay.set(day, {calls:0,sales:0,dur:0});
+    const D = byDay.get(day); D.calls++; if(sale) D.sales++; D.dur += dur;
+
+    if(!byAgent.has(agent)) byAgent.set(agent, {calls:0,sales:0,dur:0});
+    const A = byAgent.get(agent); A.calls++; if(sale) A.sales++; A.dur += dur;
+
+    byStatus.set(st, (byStatus.get(st)||0)+1);
+  }
+
+  $("pDay").innerHTML = [...byDay.entries()]
+    .sort((a,b)=> (a[0] < b[0] ? 1 : -1))
+    .map(([d,v])=>{
+      const rate = v.calls ? Math.round((v.sales/v.calls)*100) : 0;
+      return `<tr><td>${d}</td><td>${v.calls}</td><td>${v.sales}</td><td>${v.dur}</td><td>${rate}%</td></tr>`;
+    }).join("") || `<tr><td colspan="5" class="small">Aucune donnée</td></tr>`;
+
+  $("pAgent").innerHTML = [...byAgent.entries()]
+    .sort((a,b)=> b[1].calls - a[1].calls)
+    .map(([a,v])=>{
+      const rate = v.calls ? Math.round((v.sales/v.calls)*100) : 0;
+      const avg = v.calls ? Math.round(v.dur / v.calls) : 0;
+      return `<tr><td>${a}</td><td>${v.calls}</td><td>${v.sales}</td><td>${v.dur}</td><td>${rate}%</td><td>${avg}</td></tr>`;
+    }).join("") || `<tr><td colspan="6" class="small">Aucune donnée</td></tr>`;
+
+  $("pStatus").innerHTML = [...byStatus.entries()]
+    .sort((a,b)=> b[1]-a[1])
+    .map(([s,n])=>`<tr><td>${s}</td><td>${n}</td></tr>`)
+    .join("") || `<tr><td colspan="2" class="small">Aucune donnée</td></tr>`;
+}
+
+/* ======================
+   IMPORT (TXT/CSV/TSV)
+   - Historique import
+   - Dédoublonnage par docId stable
+   - importIds[] : permet deleteImport propre
+====================== */
+window.importFile = async function(){
+  clearError();
+  const f = $("file").files[0];
+  if(!f){ $("msg").textContent = "Veuillez choisir un fichier."; return; }
+
+  $("msg").textContent = "Création import…";
+
+  // créer import
+  const importRef = db.collection(IMPORTS).doc();
+  await importRef.set({
+    fileName: f.name,
+    createdAt: FieldValue.serverTimestamp()
+  });
+
+  // lire texte
+  const text = await new Promise((resolve,reject)=>{
+    const fr = new FileReader();
+    fr.onload = e=>resolve(String(e.target.result||""));
+    fr.onerror = ()=>reject(new Error("Lecture fichier impossible"));
+    fr.readAsText(f);
+  }).catch(e=>{
+    showError(e.message);
+    $("msg").textContent = "Erreur lecture fichier.";
+  });
+  if(!text) return;
+
+  const lines = text.split(/\r?\n/).filter(l=>l.trim().length);
+  if(lines.length < 2){ $("msg").textContent = "Fichier vide."; return; }
+
+  const sep = detectSep(lines[0]);
+  const headers = lines[0].split(sep).map(h=>h.trim().toLowerCase());
+
+  const idx = (name)=> headers.indexOf(String(name).toLowerCase());
+
+  // helper get cell
+  const cell = (arr, name)=>{
+    const i = idx(name);
+    return i>=0 ? (arr[i] ?? "") : "";
+  };
+
+  let processed = 0;
+  let committed = 0;
+
+  $("msg").textContent = "Import en cours…";
+
+  const CHUNK = 320;
+  for(let start=1; start<lines.length; start+=CHUNK){
+    const batch = db.batch();
+    let ops = 0;
+
+    for(let i=start; i<Math.min(lines.length, start+CHUNK); i++){
+      const c = lines[i].split(sep);
+
+      const call_date = String(cell(c,"call_date") || "").trim();
+      const user = String(cell(c,"user") || "").trim();
+      const status = normStatus(cell(c,"status") || "");
+      const phone_number = String(cell(c,"phone_number") || "").trim();
+      const mobile = String(cell(c,"mobile") || phone_number).trim();
+
+      if(!call_date || !user || !mobile) continue;
+
+      const day = dateKey(call_date) || call_date;
+      const dedupeKey = [day, user, mobile, status].join("|");
+      const docId = makeDocId(dedupeKey);
+
+      // champs CRM
+      const first_name = String(cell(c,"first_name") || "").trim();
+      const last_name = String(cell(c,"last_name") || "").trim();
+      const address = String(cell(c,"address") || "").trim();
+      const city = String(cell(c,"city") || "").trim();
+      const postal_code = String(cell(c,"postal_code") || "").trim();
+
+      // vicidial
+      const call_length = Number(cell(c,"length_in_sec") || 0);
+      const recording_location = String(cell(c,"recording_location") || "").trim();
+      const comments = String(cell(c,"comments") || "").trim();
+
+      // optionnels si présents dans fichier
+      const code_given = String(cell(c,"code_given") || "").trim();
+      const rdv_datetime = String(cell(c,"rdv_datetime") || "").trim();
+
+      const ref = db.collection(CALLS).doc(docId);
+
+      // merge:true pour ne pas écraser les champs manuels si la colonne est absente
+      const payload = {
+        call_date,
+        user,
+        status,
+        phone_number,
+        mobile,
+
+        first_name,
+        last_name,
+        address,
+        city,
+        postal_code,
+
+        call_length,
+        recording_location,
+        comments,
+
+        // si le fichier contient ces champs, ils seront mis à jour, sinon non (car string vide -> on évite)
+        ...(code_given ? { code_given } : {}),
+        ...(rdv_datetime ? { rdv_datetime } : {}),
+
+        dedupeKey,
+        importIds: FieldValue.arrayUnion(importRef.id),
+        createdAt: FieldValue.serverTimestamp()
+      };
+
+      batch.set(ref, payload, { merge:true });
+      ops++;
+      processed++;
+    }
+
+    if(ops){
+      await batch.commit();
+      committed += ops;
+    }
+  }
+
+  $("msg").textContent = `Import terminé ✅ Lignes traitées: ${processed} | Écritures: ${committed}`;
+  $("file").value = "";
+};
+
+/* ======================
+   HISTORIQUE : DELETE IMPORT
+   - supprime calls si importIds == [importId]
+   - sinon retire importId de importIds
+====================== */
+window.deleteImport = async function(importId){
+  clearError();
+  if(!confirm("Supprimer cet import de la base ? (lignes + historique)")) return;
+
+  let touched = 0;
+  let deleted = 0;
+  let updated = 0;
+
+  while(true){
+    const snap = await db.collection(CALLS).where("importIds","array-contains",importId).limit(250).get();
+    if(snap.empty) break;
+
+    const batch = db.batch();
+    snap.docs.forEach(d=>{
+      const data = d.data() || {};
+      const arr = Array.isArray(data.importIds) ? data.importIds : [];
+      touched++;
+
+      if(arr.length <= 1){
+        batch.delete(d.ref);
+        deleted++;
+      }else{
+        batch.update(d.ref, { importIds: FieldValue.arrayRemove(importId) });
+        updated++;
+      }
+    });
+
+    await batch.commit();
+  }
+
+  await db.collection(IMPORTS).doc(importId).delete();
+  alert(`Import supprimé ✅\nLignes touchées: ${touched}\nSupprimées: ${deleted}\nMises à jour: ${updated}`);
+};
+
+/* ======================
+   MODIFIER / SUPPRIMER
+====================== */
+window.openEdit = function(id){
+  clearError();
+  const row = ALL.find(x=>x.id===id);
+  if(!row){ showError("Ligne introuvable."); return; }
+
+  editingId = id;
+
+  $("mId").textContent = id;
+  $("mFirst").value = safe(row.first_name);
+  $("mLast").value = safe(row.last_name);
+  $("mMobile").value = safe(row.mobile || row.phone_number);
+  $("mAddress").value = safe(row.address);
+  $("mCity").value = safe(row.city);
+  $("mPostal").value = safe(row.postal_code);
+
+  $("mStatus").value = safe(normStatus(row.status));
+  $("mCodeGiven").value = safe(row.code_given);
+
+  // datetime-local veut "YYYY-MM-DDTHH:MM"
+  const rdv = safe(row.rdv_datetime);
+  $("mRdv").value = rdv.includes("T") ? rdv : rdv.replace(" ", "T");
+
+  $("mLen").value = Number(row.call_length || 0);
+  $("mRec").value = safe(row.recording_location);
+  $("mCom").value = safe(row.comments);
+
+  $("modalBack").style.display = "flex";
+};
+
+window.closeModal = function(){
+  $("modalBack").style.display = "none";
+  editingId = null;
+};
+
+window.saveEdit = async function(){
+  clearError();
+  if(!editingId) return;
+
+  const payload = {
+    first_name: $("mFirst").value || "",
+    last_name: $("mLast").value || "",
+    mobile: $("mMobile").value || "",
+    address: $("mAddress").value || "",
+    city: $("mCity").value || "",
+    postal_code: $("mPostal").value || "",
+
+    status: normStatus($("mStatus").value || ""),
+    code_given: $("mCodeGiven").value || "",
+    rdv_datetime: ($("mRdv").value || ""), // on garde tel quel
+    call_length: Number($("mLen").value || 0),
+    recording_location: $("mRec").value || "",
+    comments: $("mCom").value || "",
+    updatedAt: FieldValue.serverTimestamp()
+  };
+
+  await db.collection(CALLS).doc(editingId).update(payload);
+  closeModal();
+};
+
+window.deleteRowFromModal = async function(){
+  if(!editingId) return;
+  if(!confirm("Supprimer cette ligne ?")) return;
+  await db.collection(CALLS).doc(editingId).delete();
+  closeModal();
+};
+
+window.deleteRow = async function(id){
+  if(!confirm("Supprimer cette ligne ?")) return;
+  await db.collection(CALLS).doc(id).delete();
+};
+
+/* ======================
+   TOUT SUPPRIMER (ADMIN)
+====================== */
+window.deleteAll = async function(){
+  clearError();
+  const pass = prompt("Mot de passe admin :");
+  if(pass !== ADMIN_PASSWORD){ alert("Accès refusé."); return; }
+  if(!confirm("SUPPRIMER TOUT (CALLS + IMPORTS) ?")) return;
+
+  // delete calls par pages
+  while(true){
+    const snap = await db.collection(CALLS).limit(300).get();
+    if(snap.empty) break;
+    const b = db.batch();
+    snap.docs.forEach(d=>b.delete(d.ref));
+    await b.commit();
+  }
+  // delete imports par pages
+  while(true){
+    const snap = await db.collection(IMPORTS).limit(300).get();
+    if(snap.empty) break;
+    const b = db.batch();
+    snap.docs.forEach(d=>b.delete(d.ref));
+    await b.commit();
+  }
+
+  alert("Suppression totale terminée ✅");
+};
+
+/* ======================
+   EXPORTS (CSV + EXCEL)
+====================== */
+window.exportCSV = function(mode, importId){
+  const rows =
+    mode === "filtered" ? FILTERED :
+    mode === "import" ? ALL.filter(r => Array.isArray(r.importIds) && r.importIds.includes(importId)) :
+    ALL;
+
+  let out = [
+    "call_date","user","status",
+    "mobile","first_name","last_name","address","city","postal_code",
+    "code_given","rdv_datetime",
+    "call_length","recording_location","comments","importIds"
+  ].join(";") + "\n";
+
+  rows.forEach(r=>{
+    out += [
+      csvEscape(r.call_date),
+      csvEscape(r.user),
+      csvEscape(normStatus(r.status)),
+
+      csvEscape(r.mobile || r.phone_number),
+      csvEscape(r.first_name),
+      csvEscape(r.last_name),
+      csvEscape(r.address),
+      csvEscape(r.city),
+      csvEscape(r.postal_code),
+
+      csvEscape(r.code_given),
+      csvEscape(r.rdv_datetime),
+
+      csvEscape(r.call_length),
+      csvEscape(r.recording_location),
+      csvEscape(r.comments),
+      csvEscape((r.importIds||[]).join(","))
+    ].join(";") + "\n";
+  });
+
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([out],{type:"text/csv"}));
+  a.download = mode==="filtered" ? "reporting_filtre.csv" : (mode==="import" ? "reporting_import.csv" : "reporting_tout.csv");
+  a.click();
+};
+
+window.exportExcel = function(mode, importId){
+  clearError();
+
+  const rows =
+    mode === "filtered" ? FILTERED :
+    mode === "import" ? ALL.filter(r => Array.isArray(r.importIds) && r.importIds.includes(importId)) :
+    ALL;
+
+  const data = rows.map(r=>({
+    call_date: safe(r.call_date),
+    user: safe(r.user),
+    status: safe(normStatus(r.status)),
+
+    mobile: safe(r.mobile || r.phone_number),
+    first_name: safe(r.first_name),
+    last_name: safe(r.last_name),
+    address: safe(r.address),
+    city: safe(r.city),
+    postal_code: safe(r.postal_code),
+
+    code_given: safe(r.code_given),
+    rdv_datetime: safe(r.rdv_datetime),
+
+    call_length: Number(r.call_length || 0),
+    recording_location: safe(r.recording_location),
+    comments: safe(r.comments),
+
+    importIds: (r.importIds||[]).join(",")
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.json_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws1, "reporting");
+
+  // Pivot sheet
+  const pivotAOA = [];
+  const total = rows.length;
+  const totalRdv = rows.filter(r=>isSale(r.status)).length;
+  const totalDur = rows.reduce((a,r)=>a+Number(r.call_length||0),0);
+
+  pivotAOA.push(["PIVOT"]);
+  pivotAOA.push(["Total appels", total]);
+  pivotAOA.push(["Total RDV (SALE/SALES)", totalRdv]);
+  pivotAOA.push(["Durée totale (sec)", totalDur]);
+  pivotAOA.push([]);
+
+  // by agent
+  const byA = new Map();
+  rows.forEach(r=>{
+    const a = safe(r.user) || "(sans agent)";
+    if(!byA.has(a)) byA.set(a,{calls:0,sales:0,dur:0});
+    const v = byA.get(a);
+    v.calls++; if(isSale(r.status)) v.sales++; v.dur += Number(r.call_length||0);
+  });
+  pivotAOA.push(["Par agent"]);
+  pivotAOA.push(["Agent","Appels","RDV","Durée","Taux","Durée moyenne"]);
+  [...byA.entries()].sort((x,y)=>y[1].calls-x[1].calls).forEach(([a,v])=>{
+    const rate = v.calls ? Math.round((v.sales/v.calls)*100) : 0;
+    const avg = v.calls ? Math.round(v.dur/v.calls) : 0;
+    pivotAOA.push([a, v.calls, v.sales, v.dur, rate+"%", avg]);
+  });
+  pivotAOA.push([]);
+
+  // by day
+  const byD = new Map();
+  rows.forEach(r=>{
+    const d = dateKey(r.call_date) || "(date inconnue)";
+    if(!byD.has(d)) byD.set(d,{calls:0,sales:0,dur:0});
+    const v = byD.get(d);
+    v.calls++; if(isSale(r.status)) v.sales++; v.dur += Number(r.call_length||0);
+  });
+  pivotAOA.push(["Par jour"]);
+  pivotAOA.push(["Date","Appels","RDV","Durée","Taux"]);
+  [...byD.entries()].sort((a,b)=> (a[0]<b[0]?1:-1)).forEach(([d,v])=>{
+    const rate = v.calls ? Math.round((v.sales/v.calls)*100) : 0;
+    pivotAOA.push([d, v.calls, v.sales, v.dur, rate+"%"]);
+  });
+  pivotAOA.push([]);
+
+  // by status
+  const byS = new Map();
+  rows.forEach(r=>{
+    const s = normStatus(r.status) || "(sans status)";
+    byS.set(s,(byS.get(s)||0)+1);
+  });
+  pivotAOA.push(["Par status"]);
+  pivotAOA.push(["Status","Total"]);
+  [...byS.entries()].sort((a,b)=>b[1]-a[1]).forEach(([s,n])=>pivotAOA.push([s,n]));
+
+  const ws2 = XLSX.utils.aoa_to_sheet(pivotAOA);
+  XLSX.utils.book_append_sheet(wb, ws2, "pivot");
+
+  const filename =
+    mode==="filtered" ? "reporting_filtre.xlsx" :
+    mode==="import" ? "reporting_import.xlsx" :
+    "reporting_tout.xlsx";
+
+  XLSX.writeFile(wb, filename);
+};
+
+/* ======================
+   FIRST APPLY
+====================== */
+setTimeout(()=>{ try{ applyFilters(); }catch(e){} }, 0);
+</script>
+</body>
+</html>
